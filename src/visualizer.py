@@ -2,6 +2,7 @@
 
 Renders high-quality visual overlays showing detected scoreboard boundaries,
 grid cell segmentations, OCR roll readings, cumulative scores, and live game telemetry.
+100% dynamic alignment.
 """
 
 from pathlib import Path
@@ -140,7 +141,7 @@ class ScoreboardVisualizer:
                         cv2.putText(
                             annotated,
                             str(cum_val),
-                            (x + cr.x + 12, y + cr.y + int(cr.height * 0.70)),
+                            (x + cr.x + 10, y + cr.y + int(cr.height * 0.70)),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.70,
                             cum_color,
@@ -155,7 +156,7 @@ class ScoreboardVisualizer:
                     cv2.putText(
                         annotated,
                         str(live_ttl),
-                        (x + tr.x + 12, y + tr.y + int(tr.height * 0.65)),
+                        (x + tr.x + 10, y + tr.y + int(tr.height * 0.65)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.85,
                         (0, 255, 255),

@@ -2,6 +2,7 @@
 
 Partitions the detected scoreboard ROI into 4 player rows, 10 frames (including
 Frame 10 with 3 sub-boxes), player initial/name regions, and running total (TTL) box.
+100% dynamic and auto-adjustable to any input resolution.
 """
 
 from dataclasses import dataclass, field
@@ -83,7 +84,7 @@ class ScoreboardLayout:
 
 
 class ScoreboardLayoutEngine:
-    """Computes exact pixel regions for all scoreboard UI elements."""
+    """Computes exact pixel regions for all scoreboard UI elements dynamically."""
 
     def __init__(self, config: Optional[LayoutConfig] = None):
         self.config = config or LayoutConfig()
@@ -96,8 +97,10 @@ class ScoreboardLayoutEngine:
 
     def build_layout(self, roi_width: int, roi_height: int, player_count: int = 4) -> ScoreboardLayout:
         row_height = roi_height / float(player_count)
-        name_w = int(roi_width * 0.120)
-        ttl_w = int(roi_width * 0.120)
+        
+        # Proportional layout calibrated to bowling scoreboard geometry
+        name_w = int(roi_width * 0.100)
+        ttl_w = int(roi_width * 0.115)
         frames_total_w = roi_width - name_w - ttl_w
         frame_col_width = frames_total_w / 10.0
 

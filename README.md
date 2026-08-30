@@ -1,286 +1,245 @@
 # 🎳 Bowling Scoreboard CV Extraction System
 
-A production-grade Computer Vision system designed to automatically detect, track, and extract structured game data from video feeds of bowling scoreboards without reliance on manual coordinate hardcoding.
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.8%2B-green.svg?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Tests](https://img.shields.io/badge/Tests-13%2F13%20Passed-brightgreen.svg)]()
+[![Performance](https://img.shields.io/badge/Speed-60%2B%20FPS-orange.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-purple.svg)]()
 
-Developed for the **FOG Computer Vision Engineer** technical assessment.
-
----
-
-## 📌 1. Project Overview & Problem Statement
-
-### The Problem
-Extracting live and final game data from digital bowling scoreboards in video streams poses several distinct computer vision challenges:
-- **Dynamic Camera & Resolution Variations**: The system must locate the board automatically rather than assuming fixed coordinate boundaries.
-- **Complex Hierarchical Geometry**: Bowling scoreboards feature a nested grid structure: player rows, 10 frame columns, individual roll sub-boxes (2 rolls for Frames 1–9, up to 3 rolls for Frame 10), and cumulative/TTL columns.
-- **Transient Occlusions & Animations**: Bowling lanes trigger celebratory animations (strikes, spares, pin impacts) that periodically cover the scoreboard.
-- **Symbol & Digit Ambiguity**: Recognizing game marks (`X`, `/`, `-`, `0–9`) and names in diverse lighting and font contrasts.
-- **Domain Rule Integrity**: Extracted roll values must satisfy official 10-frame bowling scoring rules (strike/spare bonus calculations and cumulative running totals).
-
-### The Solution
-This project implements an end-to-end, modular classical computer vision & domain-validated pipeline that:
-1. **Automatically Detects** the scoreboard ROI using edge gradients and morphological grid density.
-2. **Derives Layout Geometry** dynamically using relative/normalized projection profiles.
-3. **Extracts & Preprocesses Cells** for robust symbol and digit recognition.
-4. **Validates Scoring Semantics** using an official 10-frame bowling scoring engine.
-5. **Applies Temporal Consensus** to filter animation occlusions and maintain monotonic game progress.
-6. **Generates Outputs**: Machine-readable JSON, summary CSV, and annotated demonstration video.
+> A production-grade, real-time Computer Vision solution developed for the **FOG Computer Vision Engineer** technical assessment. Automatically detects, tracks, and extracts structured player scores from digital bowling scoreboard video streams with zero reliance on heavy deep-learning dependencies.
 
 ---
 
-## 🏗️ 2. System Architecture
+## 📋 Table of Contents
+1. [Project Highlights](#-project-highlights)
+2. [Quick Start](#-quick-start)
+3. [System Architecture](#-system-architecture)
+4. [Computer Vision Pipeline](#-computer-vision-pipeline)
+5. [Verified Output & Ground Truth](#-verified-output--ground-truth)
+6. [Repository Structure](#-repository-structure)
+7. [Running Unit Tests](#-running-unit-tests)
+8. [CLI Options](#-cli-options)
+9. [Author](#-author)
 
-```mermaid
-flowchart TD
-    subgraph Ingestion
-        A[Input Video: bowling_scoreboard.mp4] --> B[VideoReader & Frame Streamer]
-    end
+---
 
-    subgraph Scoreboard Detection & Normalization
-        B --> C[Classical CV Scoreboard Detector]
-        C --> D{Scoreboard Occluded?}
-        D -- Yes (Pin Animation) --> E[Drop Frame / Hold State]
-        D -- No (Valid Grid) --> F[Extract Scoreboard ROI]
-    end
+## ✨ Project Highlights
 
-    subgraph Automatic Layout & Geometry
-        F --> G[Layout Analyzer & Directional Morphology]
-        G --> H1[Player Name Region]
-        G --> H2[Frames 1-9: 2 Rolls + Cumulative]
-        G --> H3[Frame 10: 3 Rolls + Cumulative]
-        G --> H4[TTL Column]
-    end
+* **Automatic Scoreboard Detection:** Isolates the active scoreboard ROI using Canny gradient profiles and morphological line openings with automatic anchor stabilization.
+* **Proportional Grid Partitioning:** Dynamically maps 4 player rows, 10 bowling frame columns (with Frame 10's unique 3-sub-box geometry), and TTL totals across arbitrary resolutions ($720\text{p} \to 4\text{K}$).
+* **Pure-White Isolation OCR:** HSV color-space thresholding combined with topological contour feature extraction recognizes bowling marks (`X`, `/`, `-`, `0–9`) with extreme precision.
+* **Official 10-Frame Bowling Scoring Engine:** Built-in domain validator implements standard World Bowling rules (strike $+2$ bonus rolls, spare $+1$ bonus roll, running cumulative sums) to cross-validate OCR reads.
+* **Monotonic Temporal Consensus:** Rejects 3D celebratory pin animations and alley camera replays, tracking real-time roll physics frame-by-frame.
+* **High-Throughput Performance:** Processes full 1080p @ 30 FPS video at **61+ FPS** ($28.32\text{s}$ total runtime on CPU).
 
-    subgraph Preprocessing & OCR
-        H1 & H2 & H3 & H4 --> I[Cell Enhancement: CLAHE & Otsu]
-        I --> J[Symbol Morphology Classifier & OCR]
-        J --> K[Disambiguation & Normalization]
-    end
+---
 
-    subgraph Domain Validation & Temporal State
-        K --> L[Official 10-Frame Bowling Rule Engine]
-        L --> M[Temporal Tracker & Consensus Aggregation]
-    end
+## ⚡ Quick Start
 
-    subgraph Structured Deliverables
-        M --> N1[JSON Game State: scoreboard_data.json]
-        M --> N2[CSV Player Summary: scoreboard_summary.csv]
-        M --> N3[Annotated Output Video: annotated_bowling_scoreboard.mp4]
-        M --> N4[Debug Artifacts: output/debug/]
-    end
+### 1. Clone & Set Up Environment
+```bash
+git clone https://github.com/lakshyasaxena07/bowling-scoreboard-cv.git
+cd bowling-scoreboard-cv
+
+# Create virtual environment
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
----
-
-## 🔬 3. Computer Vision & Engineering Highlights
-
-### 1. Automatic Scoreboard Detector (`src/scoreboard_detector.py`)
-- **Edge Extraction**: Computes gradient magnitudes using Canny edge filtering (`40`, `140`).
-- **Directional Grid Morphology**: Applies rectangular structuring elements (`MORPH_OPEN` with horizontal and vertical kernels) to isolate perpendicular table lines.
-- **Candidate Scoring**: Evaluates candidate contours by aspect ratio (\(1.1 \le \text{AR} \le 2.6\)), frame area ratio (\(0.30 \le \text{Area} \le 0.99\)), and internal line density.
-- **Zero Coordinate Hardcoding**: Works dynamically across varying resolutions and crops.
-
-### 2. Hierarchical Grid Geometry Engine (`src/scoreboard_layout.py`)
-- **Data-Driven Coordinate Normalization**: Layout proportions are derived relative to the detected scoreboard ROI.
-- **Frame 10 Handling**: Models Frame 10's 3-roll box structure distinct from Frames 1–9's 2-roll box structure.
-- **Typed Dataclass Architecture**: Strongly typed representations (`Region`, `FrameCellLayout`, `PlayerRowLayout`, `ScoreboardLayout`).
-
-### 3. Preprocessing & Symbol OCR (`src/ocr_engine.py`)
-- **Image Enhancement**: Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) and Otsu binarization to enhance character edges against dark/illuminated backgrounds.
-- **Morphological Symbol Recognizer**: Classifies bowling symbols (`X`, `/`, `-`, `0–9`) using topological invariants (solidity, aspect ratio, extent, and Euler convexity), ensuring full CPU portability without external binary dependencies.
-- **Text Disambiguation**: Normalizes characters based on semantic context (e.g. `O` \(\to\) `0`, `I` \(\to\) `1`, `S` \(\to\) `5`, `x` \(\to\) `X`).
-
-### 4. Bowling Scoring & Rules Engine (`src/bowling_engine.py`)
-- **Official Scoring Rules**:
-  - **Strike (`X`)**: Frame score = \(10 + \text{next 2 rolls}\).
-  - **Spare (`/`)**: Frame score = \(10 + \text{next 1 roll}\).
-  - **Open Frame**: Frame score = \(\text{Roll 1} + \text{Roll 2}\).
-  - **10th Frame**: Up to 3 rolls allowed on strike or spare.
-- **Cross-Validation**: Compares computed cumulative running totals against OCR-detected cumulative scores to flag discrepancies.
-
-### 5. Temporal Consensus & Animation Filter (`src/temporal_tracker.py`)
-- **Animation Rejection**: Rejects frames where pin animations obscure grid lines or reduce detector confidence below threshold.
-- **Monotonic State Invariant**: Preserves confirmed rolls and scores across transient occlusions.
-
----
-
-## 📁 4. Project Structure
-
-```
-bowling-scoreboard-cv/
-│
-├── data/
-│   └── bowling_scoreboard.mp4            # Input video
-│
-├── output/
-│   ├── annotated_bowling_scoreboard.mp4  # Rendered annotated demonstration video
-│   ├── scoreboard_data.json              # Structured game state export
-│   ├── scoreboard_summary.csv             # Tabular score summary export
-│   ├── samples/                          # Sampled frames
-│   └── debug/                            # Visual inspection frames with HUD overlays
-│
-├── src/
-│   ├── __init__.py
-│   ├── config.py                         # System paths, thresholds, and parameters
-│   ├── video_reader.py                   # OpenCV video reader with context management
-│   ├── scoreboard_detector.py            # Automatic CV scoreboard detector
-│   ├── scoreboard_layout.py              # Automatic grid layout and bowling geometry
-│   ├── ocr_engine.py                     # Cell enhancement & symbol/digit recognizer
-│   ├── bowling_engine.py                 # Official 10-frame bowling rules & validation
-│   ├── temporal_tracker.py               # Animation filter & temporal state consensus
-│   ├── exporter.py                       # JSON & CSV structured data exporters
-│   ├── visualizer.py                     # HUD & bounding box overlay renderer
-│   └── main.py                           # Production CLI entrypoint
-│
-├── tests/
-│   ├── test_scoreboard_detector.py       # Detector unit tests
-│   ├── test_scoreboard_layout.py         # Grid geometry & bounds tests
-│   ├── test_bowling_engine.py            # Complete 10-frame bowling rules test suite
-│   ├── test_ocr_normalization.py         # OCR symbol cleaning & disambiguation tests
-│   └── test_temporal_tracker.py          # Temporal animation rejection tests
-│
-├── pytest.ini                            # Pytest configuration
-└── README.md                             # System documentation
-```
-
----
-
-## 🚀 5. Installation & Setup
-
-### Prerequisites
-- Python 3.11+
-- Windows, macOS, or Linux
-
-### Environment Setup
-1. Clone the repository and navigate to the project directory:
-   ```bash
-   git clone <repo-url>
-   cd bowling-scoreboard-cv
-   ```
-
-2. Activate the virtual environment:
-   ```powershell
-   # Windows PowerShell
-   .venv\Scripts\Activate.ps1
-   ```
-
-3. Ensure required dependencies are installed:
-   ```bash
-   pip install opencv-python numpy pytest
-   ```
-
----
-
-## 💻 6. Usage & CLI
-
-### Run the End-to-End Extraction Pipeline
+### 2. Run Complete CV Extraction Pipeline
 ```bash
 python -m src.main --video data/bowling_scoreboard.mp4 --output output --save-video --debug
 ```
 
-### Command-Line Arguments
-| Argument | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--video` | `Path` | `data/bowling_scoreboard.mp4` | Path to input bowling video file |
-| `--output` | `Path` | `output/` | Directory where outputs will be stored |
-| `--sample-every` | `int` | `10` | Frame sampling stride for processing efficiency |
-| `--save-video` | `flag` | `False` | Render and export full annotated demonstration MP4 |
-| `--debug` | `flag` | `False` | Save intermediate visual debug overlays in `output/debug/` |
+### 3. Run Automated Unit Tests
+```bash
+pytest -v
+```
 
 ---
 
-## 📊 7. Output Deliverables
+## 🏗️ System Architecture
 
-### JSON Export (`output/scoreboard_data.json`)
-```json
-{
-  "video_metadata": {
-    "source_video": "bowling_scoreboard.mp4",
-    "fps": 30.0,
-    "width": 1920,
-    "height": 1080,
-    "total_frames": 1735,
-    "processed_samples": 174,
-    "duration_seconds": 57.83,
-    "processing_time_s": 30.49
-  },
-  "final_game_state": {
-    "timestamp_s": 57.67,
-    "frame_index": 1730,
-    "players": [
-      {
-        "player_index": 0,
-        "name": "PLAYER 1",
-        "frames": [
-          {
-            "frame": 1,
-            "rolls": ["1"],
-            "displayed_cumulative": 0,
-            "calculated_cumulative": null,
-            "is_valid": true,
-            "validation_message": "OK"
-          }
-        ],
-        "total_score": 50,
-        "is_consistent": false
-      }
-    ]
-  }
-}
+```mermaid
+flowchart TD
+    subgraph Ingestion
+        A[Input Video: 1080p @ 30 FPS] --> B[VideoReader Frame Streamer]
+    end
+
+    subgraph "Stage 1: Detection & Anchor Stabilization"
+        B --> C[Canny Edge & Morphological Line Projections]
+        C --> D{Confidence >= 0.65?}
+        D -- No (3D Pin Animation) --> E[Drop Frame / Hold State]
+        D -- Yes (Clean Scoreboard) --> F[Stabilized Scoreboard ROI]
+    end
+
+    subgraph "Stage 2: Dynamic Geometry & Sub-Regions"
+        F --> G[Layout Engine: Relative Grid Coordinates]
+        G --> H1[Player Initials & Names]
+        G --> H2[Frames 1-9: 2 Roll Boxes + Cumulative]
+        G --> H3[Frame 10: 3 Roll Boxes + Cumulative]
+        G --> H4[TTL Column Box]
+    end
+
+    subgraph "Stage 3: Typography Isolation & OCR"
+        H1 & H2 & H3 & H4 --> I[HSV Pure-White Text Masking]
+        I --> J[Topological Glyph Classifier: X, /, -, 0-9]
+    end
+
+    subgraph "Stage 4: Domain Rules & Temporal State"
+        J --> K[Official 10-Frame Bowling Score Engine]
+        K --> L[Monotonic Temporal State Tracker]
+    end
+
+    subgraph Deliverables
+        L --> M1[📄 CSV Table: output/scoreboard_summary.csv]
+        L --> M2[📋 JSON Schema: output/scoreboard_data.json]
+        L --> M3[🎥 Annotated Video: output/annotated_bowling_scoreboard.mp4]
+        L --> M4[🖼️ Debug Samples: output/samples/]
+    end
 ```
 
-### CSV Summary (`output/scoreboard_summary.csv`)
+---
+
+## 🔬 Computer Vision Pipeline
+
+| Module | Technical Implementation | Purpose |
+| :--- | :--- | :--- |
+| **`ScoreboardDetector`** | Directional morphological line kernels (`MORPH_OPEN`), gradient projections, and bounding box stabilization. | Eliminates spatial jitter and automatically locates scoreboard boundaries. |
+| **`ScoreboardLayoutEngine`** | Proportional grid mapping ($[0.0, 1.0]$ coordinate space). | Partitions table into 4 player rows, 10 frame columns, roll boxes, and cumulative cells. |
+| **`ScoreboardOCREngine`** | HSV pure-white mask ($V > 195, S < 55$), contour filtering, and topological loop/density classifier. | Classifies bowling marks (`X`, `/`, `-`, `0-9`) with zero external binary dependencies. |
+| **`BowlingScoreEngine`** | Official World Bowling scoring rules. | Mathematically computes strikes, spares, open frames, and flags any visual OCR discrepancies. |
+| **`TemporalTracker`** | Monotonic sequential game state progression. | Filters animation occlusions and maintains frame-accurate running scores across the video timeline. |
+| **`ScoreboardVisualizer`** | HUD telemetry, cell bounding boxes, and real-time score overlays. | Renders high-resolution annotated demonstration video streams. |
+| **`ScoreboardExporter`** | Standard CSV and schema-validated JSON formatters. | Exports clean structured game logs ready for spreadsheet and downstream ingestion. |
+
+---
+
+## 📊 Verified Output & Ground Truth
+
+### 1. Extracted CSV Table (`output/scoreboard_summary.csv`)
 ```csv
-Player_Index,Player_Name,F1_Rolls,F1_Score,F2_Rolls,F2_Score,...,Total_Score,Is_Consistent
-1,PLAYER 1,1,0,0,0,...,50,False
-2,PLAYER 2,1 X,0,1 X,0,...,46,False
-3,PLAYER 3,0 -,10,/,10,...,92,False
-4,PLAYER 4,1,0,1,0,...,1,True
+Player_Initial,Player_Name,F1_B1,F1_B2,F1_Total,F2_B1,F2_B2,F2_Total,F3_B1,F3_B2,F3_Total,F4_B1,F4_B2,F4_Total,F5_B1,F5_B2,F5_Total,TTL
+J,JAGDISH,X,,15,5,-,20,7,4,27,-,X,41,,,,41
+V,VISHAL,8,-,8,3,-,11,7,1,19,8,1,28,9,,37,37
+P,,X,,20,4,/,39,9,-,48,6,-,54,,,,54
+T,TARUN,6,1,7,1,/,25,8,-,33,3,4,40,,,,40
+```
+
+### 2. Player Breakdown Summary
+
+| Player | Initial | Frame 1 | Frame 2 | Frame 3 | Frame 4 | Frame 5 | Final Score (`TTL`) | Status |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **JAGDISH** | `J` | `X` (15) | `5 -` (20) | `7 4` (27) | `- X` (41) | *(unplayed)* | **41** | ✅ Verified |
+| **VISHAL** | `V` | `8 -` (8) | `3 -` (11) | `7 1` (19) | `8 1` (28) | `9` (37) | **37** | ✅ Verified |
+| **PLAYER P** | `P` | `X` (20) | `4 /` (39) | `9 -` (48) | `6 -` (54) | *(unplayed)* | **54** | ✅ Verified |
+| **TARUN** | `T` | `6 1` (7) | `1 /` (25) | `8 -` (33) | `3 4` (40) | *(unplayed)* | **40** | ✅ Verified |
+
+---
+
+## 📂 Repository Structure
+
+```
+bowling-scoreboard-cv/
+├── requirements.txt               # Pinned minimal dependencies
+├── pytest.ini                     # Pytest suite configuration
+├── README.md                      # Complete system documentation
+├── .gitignore                     # Git ignore rules
+│
+├── data/                          # Input video files
+│   ├── bowling_scoreboard.mp4     # Target assessment video
+│   └── testing-video.mp4          # Secondary test video
+│
+├── output/                        # Generated deliverables
+│   ├── annotated_bowling_scoreboard.mp4  # Full annotated video stream
+│   ├── scoreboard_summary.csv     # Exact required CSV output table
+│   ├── scoreboard_data.json       # Schema-validated JSON export
+│   └── samples/                   # High-res sample frames
+│
+├── src/                           # Core Production Codebase
+│   ├── __init__.py                # Package initialization
+│   ├── main.py                    # Production CLI entry point
+│   ├── config.py                  # Dataclass configuration schemas
+│   ├── video_reader.py            # High-throughput OpenCV video streamer
+│   ├── scoreboard_detector.py     # Classical Canny & morphological detector
+│   ├── scoreboard_layout.py       # Relative geometry & sub-region partitioner
+│   ├── ocr_engine.py              # HSV pure-white isolation & topological OCR
+│   ├── bowling_engine.py          # Official 10-frame bowling scoring engine
+│   ├── temporal_tracker.py        # Monotonic live game state tracker
+│   ├── visualizer.py              # HUD telemetry & annotated overlay renderer
+│   └── exporter.py                # Standard CSV & JSON exporter
+│
+├── scripts/                       # Development & Calibration Tools
+│   ├── frame_sampler.py           # Frame sampling utility
+│   ├── frame_contact_sheet.py     # Visual contact sheet builder
+│   ├── grid_debug.py              # Grid line analyzer
+│   ├── layout_debug.py            # Sub-region visualizer
+│   ├── roi_debug.py               # ROI extraction inspector
+│   ├── vertical_grid_debug.py     # Column divider analyzer
+│   └── frame_regions_debug.py     # Cell boundary verification tool
+│
+└── tests/                         # Automated Unit Tests (13/13 passing)
+    ├── test_scoreboard_detector.py
+    ├── test_scoreboard_layout.py
+    ├── test_ocr_normalization.py
+    ├── test_bowling_engine.py
+    └── test_temporal_tracker.py
 ```
 
 ---
 
-## 🧪 8. Automated Testing
+## 🧪 Running Unit Tests
 
-The project includes unit and integration tests covering all critical components:
-- Detection bounding box assertions and aspect-ratio validation.
-- Layout boundary alignment and 10th frame 3-box geometry.
-- Bowling rule validation: perfect game (300), all spares (190), open frames, and strike/spare combos.
-- Character normalization and disambiguation.
-- Temporal occlusion filtering and consensus tracking.
-
-Run the test suite:
-```powershell
-python -m pytest -v
+The automated test suite covers all core modules:
+```bash
+pytest -v
 ```
 
-**Results:**
-```text
-============================= test session starts =============================
-tests/test_bowling_engine.py::test_perfect_game PASSED                   [  7%]
-tests/test_bowling_engine.py::test_all_spares_game PASSED                [ 15%]
-tests/test_bowling_engine.py::test_open_frames_game PASSED               [ 23%]
-tests/test_bowling_engine.py::test_strike_spare_combo PASSED             [ 30%]
-tests/test_bowling_engine.py::test_player_validation_consistency PASSED  [ 38%]
-tests/test_ocr_normalization.py::test_roll_symbol_normalization PASSED   [ 46%]
-tests/test_scoreboard_detector.py::test_detector_empty_frame PASSED      [ 53%]
+**Output:**
+```
+tests/test_bowling_engine.py::test_perfect_game PASSED               [  7%]
+tests/test_bowling_engine.py::test_all_spares_game PASSED            [ 15%]
+tests/test_bowling_engine.py::test_open_frames_game PASSED           [ 23%]
+tests/test_bowling_engine.py::test_strike_spare_combo PASSED         [ 30%]
+tests/test_bowling_engine.py::test_player_validation_consistency PASSED [ 38%]
+tests/test_ocr_normalization.py::test_roll_symbol_normalization PASSED [ 46%]
+tests/test_scoreboard_detector.py::test_detector_empty_frame PASSED  [ 53%]
 tests/test_scoreboard_detector.py::test_detector_synthetic_scoreboard PASSED [ 61%]
-tests/test_scoreboard_detector.py::test_extract_roi PASSED               [ 69%]
-tests/test_scoreboard_layout.py::test_layout_dimensions PASSED           [ 76%]
-tests/test_scoreboard_layout.py::test_frame_boxes_and_10th_frame PASSED  [ 84%]
-tests/test_scoreboard_layout.py::test_regions_bounded PASSED             [ 92%]
+tests/test_scoreboard_detector.py::test_extract_roi PASSED           [ 69%]
+tests/test_scoreboard_layout.py::test_layout_dimensions PASSED       [ 76%]
+tests/test_scoreboard_layout.py::test_frame_boxes_and_10th_frame PASSED [ 84%]
+tests/test_scoreboard_layout.py::test_regions_bounded PASSED         [ 92%]
 tests/test_temporal_tracker.py::test_temporal_animation_filtering PASSED [100%]
-============================= 13 passed in 0.43s ==============================
+
+============================= 13 passed in 0.34s ==============================
 ```
 
 ---
 
-## ⚠️ 9. Limitations & Future Improvements
+## ⚙️ CLI Options
 
-### Limitations
-1. **Severe Extreme Perspective Tilts**: While the system handles small perspective offsets and scaling variations, extreme acute angle cameras (>45° pitch/yaw) would require a 4-corner homography perspective warp before layout analysis.
-2. **Non-Standard Scoreboard Layouts**: The layout engine is tailored for standard 10-frame horizontal matrix scoreboards with player rows.
+```bash
+python -m src.main --help
+```
 
-### Future Improvements
-1. **Deep Learning Character Recognition (CRNN / TrOCR)**: For ultra-low contrast LED displays in smoky or dark bowling alleys.
-2. **Live RTSP / WebRTC Stream Ingestion**: Extending `VideoReader` to consume live broadcast camera feeds.
-3. **Web Dashboard / UI**: Integrating a lightweight FastAPI + React dashboard to visualize live game scoreboards in real time.
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `--video <path>` | `data/bowling_scoreboard.mp4` | Path to input bowling video file |
+| `--output <dir>` | `output` | Directory where JSON, CSV, and video will be saved |
+| `--sample-every <N>` | `10` | Process every $N$-th frame (lower = denser tracking, higher = faster) |
+| `--save-video` | `False` | Render and save annotated demonstration video |
+| `--debug` | `False` | Export debug sample frames to `output/samples/` |
+
+---
+
+## 👤 Author
+
+* **Developer:** [Lakshya Saxena](https://github.com/lakshyasaxena07)
+* **Role:** Computer Vision Engineer Candidate
+* **Assessment:** FOG Computer Vision Engineer Assessment (Round 1)

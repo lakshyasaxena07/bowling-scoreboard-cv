@@ -1,7 +1,8 @@
 """Scoreboard Detection Module.
 
 Automatically detects the scoreboard boundary in video frames using classical
-computer vision and locks the stabilized anchor ROI to eliminate spatial jitter.
+computer vision (Canny edge detection and morphological projection profiles).
+100% dynamic, self-adjusting with zero hardcoded frame limits.
 """
 
 from dataclasses import dataclass
@@ -35,10 +36,11 @@ class ScoreboardDetection:
 
 
 class ScoreboardDetector:
-    """Automatic Scoreboard Detector with stabilized anchor locking."""
+    """Dynamic Scoreboard Detector using Morphological Line Projections."""
 
     def __init__(self, config: Optional[DetectionConfig] = None):
         self.config = config or DetectionConfig()
+        self._cached_bbox: Optional[Tuple[int, int, int, int]] = None
 
     def detect(self, frame: np.ndarray) -> Optional[ScoreboardDetection]:
         if frame is None or frame.size == 0:
@@ -63,26 +65,38 @@ class ScoreboardDetector:
         h_peaks = np.count_nonzero(h_proj > (frame_width * 0.15))
         v_peaks = np.count_nonzero(v_proj > (frame_height * 0.15))
 
-        # Real scoreboard has horizontal dividers and vertical column lines
+        # Rejection of occluded frames / pin animations
         if h_peaks < 3 or v_peaks < 4:
             return None
 
-        # Lock to calibrated scoreboard bounding box to eliminate all jitter
-        x = int(frame_width * 0.138)   # ~265 px on 1920
-        y = int(frame_height * 0.135)  # ~146 px on 1080
-        bw = int(frame_width * 0.770)  # ~1478 px on 1920
-        bh = int(frame_height * 0.790) # ~853 px on 1080
+        # Dynamically locate table boundaries from outer projection bounds
+        y_indices = np.where(h_proj > (frame_width * 0.10))[0]
+        x_indices = np.where(v_proj > (frame_height * 0.10))[0]
 
-        confidence = min(0.98, 0.50 + (h_peaks + v_peaks) * 0.03)
+        if len(y_indices) > 0 and len(x_indices) > 0:
+            min_y, max_y = int(y_indices[0]), int(y_indices[-1])
+            min_x, max_x = int(x_indices[0]), int(x_indices[-1])
+            
+            # Smooth bounding box
+            bw = max_x - min_x
+            bh = max_y - min_y
 
-        return ScoreboardDetection(
-            x=x,
-            y=y,
-            width=bw,
-            height=bh,
-            confidence=float(round(confidence, 2)),
-            is_obscured=False,
-        )
+            if bw > frame_width * 0.50 and bh > frame_height * 0.50:
+                self._cached_bbox = (min_x, min_y, bw, bh)
+
+        if self._cached_bbox is not None:
+            bx, by, bw, bh = self._cached_bbox
+            confidence = min(0.98, 0.60 + (h_peaks + v_peaks) * 0.02)
+            return ScoreboardDetection(
+                x=bx,
+                y=by,
+                width=bw,
+                height=bh,
+                confidence=float(round(confidence, 2)),
+                is_obscured=False,
+            )
+
+        return None
 
     def extract(self, frame: np.ndarray, detection: ScoreboardDetection) -> np.ndarray:
         if frame is None or frame.size == 0:
